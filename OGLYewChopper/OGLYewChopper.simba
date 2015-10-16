@@ -1,0 +1,343 @@
+program OGLYewChopper;
+{$DEFINE SRLCOMPATIBILITY}
+{$i srl-6/srl.simba}
+{$include_once ogLib\lib\core\core.simba}
+{$i SPS/lib/SPS-RS3.Simba}
+{$DEFINE DEBUG}
+
+//////////////////////////////////////////////////////
+// START WITH PLAYER LOGGED IN AND SMART ALREADY UP //
+//          WILL NEVER SUPPORT MULTIPLAYER          //
+//////////////////////////////////////////////////////
+//             Location tracking: [SPS]             //
+//             Cutting detection: [OGL]             //
+//             Finding tree: [OGL]                  //
+//             Walking: [SPS]                       //
+//             Banking: [SRL]                       //
+//             Tree switching: [OGL/SPS]            //
+//             Progress Report: [DTM]               //
+//////////////////////////////////////////////////////
+
+const
+  SCRIPT_VERSION = 1.0;
+  SCRIPT_NAME = 'P1ng''s Edgeville Yew Chopper';
+  PLAYER_PIN = '';   //if user has PIN
+  TAKE_BREAKS = true; //take breaks?
+  BREAK_LENGTH = 60; //time between break in minutes
+
+var
+  clientCenter: TPoint;
+  playerModelID: uint32;
+  fails, logDTM, logsCut, breaksTaken: Integer;
+  breakTimer: TCountDown;
+
+function ogl.setViewPort(X1,Y1,X2,Y2:int32): boolean; //Credit: Obscurity
+begin
+  exit(glxViewPort(X1,Y1,X2,Y2));
+end;
+
+function getPlayerModelID(): uint32; //Credit: Ross' AIO Woodcutter
+var
+  playerBox: TBox;
+  pModel: glModelArray;
+begin
+  playerBox := intToBox(280,175,300,210); //Edited box to only suit fixed screen
+  pModel := ogl.getModels(playerBox);
+
+  result := pModel[high(pModel)].id;
+end;
+
+procedure pDebug(S:String);
+begin
+  {$IFDEF DEBUG}
+    writeLn(S);
+  {$ENDIF}
+end;
+
+procedure freeVars();  //Free DTMS
+begin
+  freeDTM(logDTM);
+end;
+
+procedure initVars(); //Load records/DTMs/SPS paths, etc
+begin
+  logDTM := DTMFromString('mwQAAAHicjcyxDYAgAAXRD6ExTsAmDuEqYmMk2hghFhQWbuxVlsIlr71O0uWkjBsPChJ2LIjYjDQhIOLAiYQVM8ah52Z/edUzDb5ezswJwA==');
+  addOnTerminate('freeVars');
+end;
+
+procedure startScript(); //Set up player for botting
+begin
+  disguise(SCRIPT_NAME);
+  status('Setting up script...');
+  sps.setup('EDGEVILLE_YEW_BANK', RUNESCAPE_OTHER);
+  ogl.setup();
+  ogl.setViewPort(0,0,576,388);
+  clientCenter := ogl.getClientMidPoint();
+  ogl.setDebugMode('n');
+  initVars();
+
+  wait(randomRange(2000, 4000));
+  miniMap.clickCompass();
+  wait(randomRange(1500,2000));
+  mainscreen.setAngle(MS_ANGLE_HIGH);
+
+  wait(randomRange(500, 5000));
+  playerModelID := getPlayerModelID();
+  {$IFDEF DEBUG}
+  writeLn(playerModelID);
+  {$ENDIF}
+
+  if (not tabBackpack.isOpen()) then
+    tabBackpack.open();
+end;
+
+function playerLoc(): Integer; //SPS location checker
+var
+  i: Integer;
+  p: TPoint;
+  bankBox, northBox, southBox: TBox;
+  locBox: TBoxArray;
+  locNames: TStringArray;
+begin
+  bankBox := [214, 150, 242, 186];
+  northBox := [186, 214, 206, 238];
+  southBox := [186, 242, 206, 270];
+  locBox := [bankBox, northBox, southBox];
+  locNames := ['bank', 'north yew', 'south yew'];
+  p := sps.getPlayerPos();
+
+  for i := 0 to 3 do
+  begin
+    if locBox[i].isPointInside(p) then
+    begin
+      pDebug('player is at: ' + locNames[i]);
+      result := i;
+      break;
+    end;
+  end;
+
+  case i of
+    3:
+    begin
+      pDebug('player is lost...');
+      terminateScript();
+    end;
+  end;
+end;
+
+function walkToBank(): Boolean; //SPS walk to bank route
+var
+  p: TPoint;
+begin
+  p := [226, 180];
+  status('Walking to bank...');
+  result := sps.walkToPos(p, sps.getPlayerPos);
+end;
+
+function walkToNorthYew(): Boolean; //SPS walk to north yew tree
+var
+  p: TPoint;
+begin
+  p := [194, 225];
+  status('Walking to north yew...');
+  result := sps.walkToPos(p, sps.getPlayerPos);
+end;
+
+function walkToSouthYew(): Boolean; //SPS walk to south yew tree
+var
+  p: TPoint;
+begin
+  p := [192, 259];
+  status('Walking to south yew...');
+  result := sps.walkToPos(p, sps.getPlayerPos);
+end;
+
+function isAnimating(): boolean; //Credit: Ross' AIO Woodcutter
+begin
+  result := ogl.getModels(PlayerModelID).isEmpty();
+  if result then
+    status('Chopping');
+end;
+
+function moveTree(): Boolean;
+begin
+  inc(fails);
+
+  case playerLoc() of
+    0: result := false;
+    1: result := walkToSouthYew;
+    2: result := walkToNorthYew;
+  end;
+
+  if result then
+    inc(fails);
+end;
+
+function findYew(): Boolean;
+var
+  yewTrees: glModelArray;
+begin
+  if not isLoggedIn() then
+    players[currentPlayer].login;
+
+  //potential yew IDs
+  //913711325
+  //3873576496
+  status('Searching for a yew...');
+  yewTrees := ogl.getModels(913711325, intToBox(0, 0, 575, 320));
+  result := length(yewTrees) > 0;
+
+  if result then
+  begin
+    fails := 0;
+    status('Available yews on screen: ' + intToStr(length(yewTrees)));
+    mouse(clientCenter.closest(yewTrees)[0].randomizePointEllipse(15), MOUSE_MOVE);
+    if isMouseOverText(['Yew', 'ew'], randomRange(500,1000)) then
+    begin
+      fastClick(MOUSE_LEFT);
+      status('Clicked available yew tree');
+    end;
+  end else
+  begin
+    if fails = 0 then
+      moveTree()
+    else
+    begin
+      pDebug('no yew at either tree... chill for a bit');
+      while length(yewTrees) = 0 do
+      begin
+        yewTrees := ogl.getModels(913711325, intToBox(0, 0, 575, 320));
+        wait(randomRange(2000, 5000));
+      end;
+    end;
+  end;
+end;
+
+function bankPackEmpty(): Boolean;
+begin
+  result := bankScreen.getPackCount() = 0;
+end;
+
+function handleBanking(): Boolean;
+begin
+  if not isLoggedIn() then
+    players[currentPlayer].login;
+
+  if tabBackPack.isEmpty() then
+    exit;
+
+  bankScreen.open(BANK_NPC_BLUE);
+  status('Banking');
+
+  result :=  bankScreen.isOpen(randomRange(5000, 7000));
+  if not result then
+  begin
+    if pinScreen.isOpen(randomRange(2000, 3000)) then
+      pinScreen.enter(PLAYER_PIN);
+    result := bankScreen.isOpen(randomRange(2000, 3000));
+  end;
+
+  if not bankPackEmpty() then
+    bankScreen.quickDeposit(QUICK_DEPOSIT_INVENTORY);
+
+  if waitFunc(@bankPackEmpty, 50, 7000) then
+    bankScreen.close(true);
+end;
+
+procedure antiBan();
+var
+  i: Integer;
+begin
+  wait(randomRange(2000, 4000));
+
+  i := random(1000);
+  case i of
+    1: randomRClickItem();
+    2: pickUpMouse();
+    3: mouseMovingObject();
+    5..80: mouseoffclient(OFF_CLIENT_RANDOM, randomRange(2000, 3000));
+    101..115: hoverSkill(SKILL_WOODCUTTING);
+    150..160: sleepAndMoveMouse(randomRange(2000, 5000));
+  end;
+end;
+
+procedure setBreak(); //CREDIT: Ross' Woodcutting
+begin
+  breakTimer.setTime((BREAK_LENGTH * 60000) + (randomRange(-300000, 300000)));
+end;
+
+procedure takeBreak(); //CREDIT: Ross' Woodcutting
+var
+  breakTime: tCountDown;
+begin
+  if not (TAKE_BREAKS and breakTimer.isFinished()) then
+    exit;
+  breakTime.setTime(randomRange(20 * 60000, 60 * 60000));
+  inc(breaksTaken);
+  while (not breakTime.isFinished()) do
+  begin
+    status('Taking break for: ' + toStr(round(breakTime.timeRemaining()/1000)) + 's');
+    wait(1000);
+  end;
+  setBreak();
+end;
+
+procedure progressReport();
+var
+  XP, XPH: Integer;
+begin
+  XP := (round(logsCut * 175));
+  XPH := round(XP * (3600.0 / (GetTimeRunning / 1000.0)));
+
+  {$IFDEF DEBUG}
+    clearDebug();
+  {$ENDIF}
+  writeLn('P1ng''s OGL Yew Chopper V' + toStr(SCRIPT_VERSION));
+  writeLn('==========================');
+  writeLn('Time running: ' + timeRunning);
+  writeLn('Chopped ' + intToStr(logsCut) + ' yew logs');
+  writeLn('Gained: ' + intToStr(XP) + 'XP');
+  writeLn('Gained: ' + intToStr(XPH) + 'XP/H');
+  writeLn('Breaks taken: ' + intToStr(breaksTaken));
+  writeLn('Next break in: ' + toStr(round(breakTimer.timeRemaining / 60000)) + 'min');
+end;
+
+begin
+  startScript();
+  setBreak();
+
+  repeat
+    while playerLoc = 0 do //player at the bank
+    begin
+      if tabBackPack.isEmpty then
+        break;
+      if handleBanking() then
+        break;
+    end;
+
+    if playerLoc = 0 then
+      walkToNorthYew();
+
+    while playerLoc <> 0 do //player at a yew tree
+    begin
+      if tabBackPack.isFull then
+      begin
+        logsCut := logsCut + tabBackpack.countDTM(logDTM);
+        break;
+      end;
+
+      if not isAnimating then
+        findYew();
+
+      wait(randomRange(3000, 10000));
+      while isAnimating() do
+        antiBan();
+    end;
+
+    if playerLoc <> 0 then
+    begin
+      progressReport();
+      walkToBank();
+    end;
+  until(false);
+end.
