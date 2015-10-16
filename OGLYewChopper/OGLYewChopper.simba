@@ -4,19 +4,19 @@ program OGLYewChopper;
 {$include_once ogLib\lib\core\core.simba}
 {$i SPS/lib/SPS-RS3.Simba}
 {$DEFINE DEBUG}
-
-//////////////////////////////////////////////////////
-// START WITH PLAYER LOGGED IN AND SMART ALREADY UP //
-//          WILL NEVER SUPPORT MULTIPLAYER          //
-//////////////////////////////////////////////////////
-//             Location tracking: [SPS]             //
-//             Cutting detection: [OGL]             //
-//             Finding tree: [OGL]                  //
-//             Walking: [SPS]                       //
-//             Banking: [SRL]                       //
-//             Tree switching: [OGL/SPS]            //
-//             Progress Report: [DTM]               //
-//////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////
+// PUT EDGEVILLE_YEW_BANK SPS MAP INTO RUNESCAPE_OTHER //
+//  START WITH PLAYER LOGGED IN AND SMART ALREADY UP   //
+//            WILL NEVER SUPPORT MULTIPLAYER           //
+/////////////////////////////////////////////////////////
+//              Location tracking: [SPS]               //
+//              Cutting detection: [OGL]               //
+//              Finding tree: [OGL]                    //
+//              Walking: [SPS]                         //
+//              Banking: [SRL]                         //
+//              Tree switching: [OGL/SPS]              //
+//              Progress Report: [DTM]                 //
+/////////////////////////////////////////////////////////
 
 const
   SCRIPT_VERSION = 1.0;
@@ -30,6 +30,26 @@ var
   playerModelID: uint32;
   fails, logDTM, logsCut, breaksTaken: Integer;
   breakTimer: TCountDown;
+
+procedure getUpdate();
+var
+  newFile: Integer;
+  newVer: Extended;
+begin
+  newVer := strToFloat(getPage('https://raw.githubusercontent.com/p1ng-k1ng/OGLYewChopper/master/OGLYewChopper/Version.txt'));
+  printf('Current script Version: %f || Online script Version: %f', [SCRIPT_VERSION, newVer]);
+
+  if newVer > SCRIPT_VERSION then
+  begin
+    printf('Updating OGLYewChopper.simba from Version %f to %f', [SCRIPT_VERSION, newVer]);
+    newFile := rewriteFile(scriptPath + 'OGLYewChopper V' + toStr(newVer) + '.simba', false);
+    writeFileString(newFile, getPage('https://raw.githubusercontent.com/p1ng-k1ng/OGLYewChopper/master/OGLYewChopper/OGLYewChopper.simba'));
+    closeFile(newFile);
+    print('Please reopen this file');
+    terminateScript();
+  end else
+  writeLn('You have the latest version of the script!');
+end;
 
 function ogl.setViewPort(X1,Y1,X2,Y2:int32): boolean; //Credit: Obscurity
 begin
@@ -67,6 +87,8 @@ end;
 
 procedure startScript(); //Set up player for botting
 begin
+  clearDebug();
+  getUpdate();
   disguise(SCRIPT_NAME);
   status('Setting up script...');
   sps.setup('EDGEVILLE_YEW_BANK', RUNESCAPE_OTHER);

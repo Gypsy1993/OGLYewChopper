@@ -1,0 +1,36 @@
+program OGLYewChopperUpdater;
+{$i srl-6/srl.simba}
+
+(* Auto-Updater file:
+
+      Run to get latest version of the script.
+      The script will appear in the same directory as this script.
+                                                                          *)
+const
+  SCRIPT_VERSION = 1.0;
+
+procedure getUpdate();
+var
+  newFile: Integer;
+  newVer: Extended;
+begin
+  newVer := strToFloat(getPage('https://raw.githubusercontent.com/p1ng-k1ng/OGLYewChopper/master/OGLYewChopper/Version.txt'));
+  printf('Current script Version: %f || Online script Version: %f', [SCRIPT_VERSION, newVer]);
+
+  if newVer > SCRIPT_VERSION then
+  begin
+    printf('Updating OGLYewChopper.simba from Version %f to %f', [SCRIPT_VERSION, newVer]);
+    newFile := rewriteFile(scriptPath + 'OGLYewChopper V' + toStr(newVer) + '.simba', false);
+    writeFileString(newFile, getPage('https://raw.githubusercontent.com/p1ng-k1ng/OGLYewChopper/master/OGLYewChopper/OGLYewChopper.simba'));
+    closeFile(newFile);
+    print('Please reopen this file');
+    terminateScript();
+  end else
+  writeLn('You have the latest version of the script!');
+end;
+
+begin
+  clearDebug();
+  disableSRLLog := True;
+  getUpdate();
+end.
